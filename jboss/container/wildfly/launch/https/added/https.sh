@@ -102,14 +102,19 @@ function configureHttpsCli() {
     testXpathExpression "${xpath}" "ret"
 
     if [ "${ret}" -eq 0 ]; then
-    cat << EOF >> ${CLI_SCRIPT_FILE}
-    for serverName in /subsystem=undertow:read-children-names(child-type=server)
-        if (result == []) of /subsystem=undertow/server=\$serverName:read-children-names(child-type=https-listener)
-          /subsystem=undertow/server=\$serverName/https-listener=https:add(security-realm=ApplicationRealm, socket-binding=https, proxy-address-forwarding=true)
-        else
-          echo \"There is already an undertow https-listener for the '\$serverName' server so we are not adding it\"
-        end-if
-    done
+      cat << EOF >> ${CLI_SCRIPT_FILE}
+      for serverName in /subsystem=undertow:read-children-names(child-type=server)
+          if (result == []) of /subsystem=undertow/server=\$serverName:read-children-names(child-type=https-listener)
+            /subsystem=undertow/server=\$serverName/https-listener=https:add(security-realm=ApplicationRealm, socket-binding=https, proxy-address-forwarding=true)
+          else
+            echo "There is already an undertow https-listener for the '${serverName}' server so we are not adding it"
+          end-if
+      done
+EOF
+    else
+      cat << EOF >> ${CLI_SCRIPT_FILE}
+      echo "You have set environment variables to configure Https. However, your base configuration does not contain the Undertow subsystem." >> \${error_file}
+      exit
 EOF
     fi
 }
