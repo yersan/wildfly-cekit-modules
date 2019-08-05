@@ -1,17 +1,4 @@
-# only processes a single environment as the placeholder is not preserved
-
-if [ -n "${LOGGING_INCLUDE}" ]; then
-    source "${LOGGING_INCLUDE}"
-else
-    source $JBOSS_HOME/bin/launch/logging.sh
-fi
-
-# required shared elytron functions
-if [ -n "${ELYTRON_INCLUDE}" ]; then
-    source "${ELYTRON_INCLUDE}"
-else
-    source $JBOSS_HOME/bin/launch/elytron.sh
-fi
+source $JBOSS_HOME/bin/launch/jgroups_common.sh
 
 prepareEnv() {
   unset JGROUPS_ENCRYPT_SECRET
@@ -31,42 +18,63 @@ configureEnv() {
 
 create_jgroups_elytron_encrypt_sym() {
     declare jg_encrypt_keystore="$1" jg_encrypt_key_alias="$2" jg_encrypt_password="$3"
-    local encrypt="<encrypt-protocol type=\"SYM_ENCRYPT\" key-store=\"${jg_encrypt_keystore}\" key-alias=\"${jg_encrypt_key_alias}\">\
-                       <key-credential-reference clear-text=\"${jg_encrypt_password}\"/>\
-                   </encrypt-protocol>"
-    echo ${encrypt}
+    local encrypt
+    read -r -d '' encrypt <<- EOF
+    <encrypt-protocol type="SYM_ENCRYPT" key-store="${jg_encrypt_keystore}" key-alias="${jg_encrypt_key_alias}">
+       <key-credential-reference clear-text="${jg_encrypt_password}"/>
+    </encrypt-protocol>
+EOF
+
+    echo "${encrypt}"
 }
 
+# shellcheck disable=SC2120
 create_jgroups_encrypt_asym() {
     # Asymmetric encryption using public/private encryption to fetch the shared secret key
     # from the docs: "The ASYM_ENCRYPT protocol should be configured immediately before the pbcast.NAKACK2"
     # this also *requires* AUTH to be enabled.
     # TODO: make these properties configurable, this is currently just falling back on defaults.
     declare sym_keylength="${1:-}" sym_algorithm="${2:-}" asym_keylength="${3:-}" asym_algorithm="${4:-}" change_key_on_leave="${5:-}"
-    local jgroups_encrypt="\
-                    <protocol type=\"ASYM_ENCRYPT\">\n\
-                        <property name=\"sym_keylength\">${sym_keylength:-128}</property>\n\
-                        <property name=\"sym_algorithm\">${sym_algorithm:-AES/ECB/PKCS5Padding}</property>\n\
-                        <property name=\"asym_keylength\">${asym_keylength:-512}</property>\n\
-                        <property name=\"asym_algorithm\">${asym_algorithm:-RSA}</property>\n\
-                        <property name=\"change_key_on_leave\">${change_key_on_leave:-true}</property>\n\
-                    </protocol>"
-    echo ${jgroups_encrypt}
+    local jgroups_encrypt
+    read -r -d '' jgroups_encrypt <<- EOF
+      <protocol type="ASYM_ENCRYPT">
+          <property name="sym_keylength">${sym_keylength:-128}</property>
+          <property name="sym_algorithm">${sym_algorithm:-AES/ECB/PKCS5Padding}</property>
+          <property name="asym_keylength">${asym_keylength:-512}</property>
+          <property name="asym_algorithm">${asym_algorithm:-RSA}</property>
+          <property name="change_key_on_leave">${change_key_on_leave:-true}</property>
+      </protocol>
+EOF
+    echo "${jgroups_encrypt}"
 }
 
+create_jgroups_encrypt_asym_cli() {
+    local stacks=(tcp udp)
+    for stack in "${stacks[@]}"; do
+      op=("/subsystem=jgroups/stack=$stack/protocol=AUTH:add()"
+        "/subsystem=jgroups/stack=$stack/protocol=AUTH/token=digest:add(algorithm="${digest_algorithm:-SHA-512}", shared-secret-reference={clear-text="${cluster_password}"})"
+      )
+      config="${config} $(configure_protocol_cli_helper "$stack" "AUTH" "${op[@]}")"
+    done
+}
+
+# shellcheck disable=SC2089
 create_jgroups_elytron_legacy() {
     declare jg_encrypt_keystore="$1" jg_encrypt_password="$2" jg_encrypt_name="$3" jg_encrypt_keystore_dir="$4"
     # compatibility with old marker, only used if new marker is not present
-    local legacy_encrypt="\
-        <protocol type=\"SYM_ENCRYPT\">\
-          <property name=\"provider\">SunJCE</property>\
-          <property name=\"sym_algorithm\">AES</property>\
-          <property name=\"encrypt_entire_message\">true</property>\
-          <property name=\"keystore_name\">${jg_encrypt_keystore_dir}/${jg_encrypt_keystore}</property>\
-          <property name=\"store_password\">${jg_encrypt_password}</property>\
-          <property name=\"alias\">${jg_encrypt_name}</property>\
-        </protocol>"
-    echo ${legacy_encrypt}
+    local legacy_encrypt
+    read -r -d '' legacy_encrypt <<- EOF
+      <protocol type="SYM_ENCRYPT">
+        <property name="provider">SunJCE</property>
+        <property name="sym_algorithm">AES</property>
+        <property name="encrypt_entire_message">true</property>
+        <property name="keystore_name">${jg_encrypt_keystore_dir}/${jg_encrypt_keystore}</property>
+        <property name="store_password">${jg_encrypt_password}</property>
+        <property name="alias">${jg_encrypt_name}</property>
+      </protocol>
+EOF
+
+    echo "${legacy_encrypt}"
 }
 
 validate_keystore() {
@@ -103,6 +111,7 @@ configure_jgroups_encryption() {
  local jgroups_encrypt_protocol="${JGROUPS_ENCRYPT_PROTOCOL:=SYM_ENCRYPT}"
  local jgroups_encrypt=""
  local key_store=""
+
  case "${jgroups_encrypt_protocol}" in
   "SYM_ENCRYPT")
     log_info "Configuring JGroups cluster traffic encryption protocol to SYM_ENCRYPT."
@@ -110,6 +119,7 @@ configure_jgroups_encryption() {
     local keystore_warning_message=""
     local has_elytron_tls_marker=$(has_elytron_tls "${CONFIG_FILE}")
     local keystore_validation_state="";
+
     if [ "${has_elytron_tls_marker}" = "true" ]; then
         keystore_validation_state=$(validate_keystore "${JGROUPS_ENCRYPT_SECRET}" "${JGROUPS_ENCRYPT_NAME}" "${JGROUPS_ENCRYPT_PASSWORD}" "${JGROUPS_ENCRYPT_KEYSTORE}")
     else

@@ -1,23 +1,33 @@
-
 # dont enable these by default, bats on CI doesn't output anything if they are set
 #set -euo pipefail
 #IFS=$'\n\t'
-
-# bug in bats with set -eu?
 export BATS_TEST_SKIPPED=
 
 # fake JBOSS_HOME
-export JBOSS_HOME=$BATS_TEST_DIRNAME
-# fake the logger so we don't have to deal with colors
-export LOGGING_INCLUDE=$BATS_TEST_DIRNAME/../../../../../../test-common/logging.sh
-export ELYTRON_INCLUDE=$BATS_TEST_DIRNAME/../../elytron/added/launch/elytron.sh
-export NODE_NAME_INCLUDE=$BATS_TEST_DIRNAME/../../os/node-name/added/launch/openshift-node-name.sh
+export JBOSS_HOME=$BATS_TMPDIR/jboss_home
+rm -rf $JBOSS_HOME 2>/dev/null
+mkdir -p $JBOSS_HOME/bin/launch
 
-load $BATS_TEST_DIRNAME/../added/launch/jgroups.sh
-load $BATS_TEST_DIRNAME/../added/launch/ha.sh
+# copy scripts we are going to use
+cp $BATS_TEST_DIRNAME/../../../launch-config/config/added/launch/openshift-common.sh $JBOSS_HOME/bin/launch
+cp $BATS_TEST_DIRNAME/../../../../../../test-common/logging.sh $JBOSS_HOME/bin/launch
+cp $BATS_TEST_DIRNAME/../added/launch/jgroups.sh $JBOSS_HOME/bin/launch
+cp $BATS_TEST_DIRNAME/../added/launch/jgroups_common.sh $JBOSS_HOME/bin/launch
+cp $BATS_TEST_DIRNAME/../added/launch/ha.sh $JBOSS_HOME/bin/launch
+cp $BATS_TEST_DIRNAME/../../elytron/added/launch/elytron.sh $JBOSS_HOME/bin/launch
+mkdir -p $JBOSS_HOME/standalone/configuration
+
+# Set up the environment variables and load dependencies
+WILDFLY_SERVER_CONFIGURATION=standalone-openshift.xml
+
+# source the scripts needed
+source $JBOSS_HOME/bin/launch/openshift-common.sh
+source $JBOSS_HOME/bin/launch/elytron.sh
+source $JBOSS_HOME/bin/launch/logging.sh
+source $JBOSS_HOME/bin/launch/jgroups.sh
 
 setup() {
-  export CONFIG_FILE=${BATS_TMPDIR}/standalone-openshift.xml
+  cp $BATS_TEST_DIRNAME/../../../../../../test-common/configuration/standalone-openshift.xml $JBOSS_HOME/standalone/configuration
 }
 
 teardown() {
