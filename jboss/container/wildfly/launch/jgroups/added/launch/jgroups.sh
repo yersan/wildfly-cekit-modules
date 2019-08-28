@@ -28,7 +28,6 @@ EOF
     echo "${encrypt}"
 }
 
-# shellcheck disable=SC2120
 create_jgroups_encrypt_asym() {
     # Asymmetric encryption using public/private encryption to fetch the shared secret key
     # from the docs: "The ASYM_ENCRYPT protocol should be configured immediately before the pbcast.NAKACK2"
@@ -49,12 +48,16 @@ EOF
 }
 
 create_jgroups_encrypt_asym_cli() {
+      # find the position of NAKACK" protocol
+
     local stacks=(tcp udp)
     for stack in "${stacks[@]}"; do
       op=("/subsystem=jgroups/stack=$stack/protocol=AUTH:add()"
         "/subsystem=jgroups/stack=$stack/protocol=AUTH/token=digest:add(algorithm="${digest_algorithm:-SHA-512}", shared-secret-reference={clear-text="${cluster_password}"})"
       )
       config="${config} $(configure_protocol_cli_helper "$stack" "AUTH" "${op[@]}")"
+      config="${config} $(configure_protocol_cli_helper "$stack" "ASYM_ENCRYPT" "${op[@]}")"
+
     done
 }
 
