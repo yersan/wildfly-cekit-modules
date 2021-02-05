@@ -223,7 +223,7 @@ generate_generic_ping_config() {
 
 generate_dns_ping_config() {
     local ping_protocol="${1}"
-    local ping_service_name="${2}"
+    local ping_service_name="${2:-ping-service-disabled}"
     # Unused:
     # local ping_service_port="${3}"
     local ping_service_namespace="${4}"
